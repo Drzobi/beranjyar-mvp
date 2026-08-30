@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  wg-easy:
+    image: weejewel/wg-easy
+    container_name: wg-easy
+    environment:
+      - WG_HOST=vpn.beranjyar.internal
+      - PASSWORD=CHANGE_ME_AFTER_FIRST_RUN
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    volumes:
+      - ./wg-easy/data:/etc/wireguard
+    restart: unless-stopped

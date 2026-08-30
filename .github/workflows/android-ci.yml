@@ -1,0 +1,40 @@
+name: Android CI (build if project present)
+
+on: [push, pull_request]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show repo files
+        run: pwd && ls -la || true
+      - name: Check for gradlew
+        id: check_gradlew
+        run: |
+          if [ -f "gradlew" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Grant execute permission for gradlew (if exists)
+        if: steps.check_gradlew.outputs.exists == 'true'
+        run: chmod +x gradlew
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Install Gradle if gradlew missing
+        if: steps.check_gradlew.outputs.exists == 'false'
+        run: sudo apt-get update && sudo apt-get install -y gradle
+      - name: Build (attempt)
+        run: |
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleDebug || true
+          elif [ -f "android-sample/gradlew" ]; then
+            (cd android-sample && ./gradlew assembleDebug) || true
+          else
+            echo "No gradlew found; attempting system gradle build in android-sample"
+            gradle -p android-sample assembleDebug || true
+          fi

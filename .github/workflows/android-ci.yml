@@ -1,45 +1,79 @@
 name: Android CI (build if project present)
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Show repo files
         run: pwd && ls -la || true
-      - name: Check for gradlew
-        id: check_gradlew
+
+      - name: Detect gradlew location
+        id: detect
         run: |
+          # بررسی مسیرهای متداول برای wrapper
           if [ -f "gradlew" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "wrapper=gradlew" >> $GITHUB_OUTPUT
+            echo "wd=." >> $GITHUB_OUTPUT
+          elif [ -f "app/gradlew" ]; then
+            echo "wrapper=app/gradlew" >> $GITHUB_OUTPUT
+            echo "wd=app" >> $GITHUB_OUTPUT
+          elif [ -f "android-sample/gradlew" ]; then
+            echo "wrapper=android-sample/gradlew" >> $GITHUB_OUTPUT
+            echo "wd=android-sample" >> $GITHUB_OUTPUT
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "wrapper=" >> $GITHUB_OUTPUT
+            echo "wd=." >> $GITHUB_OUTPUT
           fi
-      - name: Grant execute permission for gradlew (if exists)
-        if: steps.check_gradlew.outputs.exists == 'true'
-        run: chmod +x gradlew
-      - name: Grant execute permission for android-sample/gradlew (if exists)
+
+      - name: Grant execute permission for gradlew (if present)
         run: |
-          if [ -f "android-sample/gradlew" ]; then
-            chmod +x android-sample/gradlew
+          if [ -n "${{ steps.detect.outputs.wrapper }}" ] && [ -f "${{ steps.detect.outputs.wrapper }}" ]; then
+            chmod +x "${{ steps.detect.outputs.wrapper }}"
           fi
-      - name: Set up JDK
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Install Gradle if gradlew missing
-        if: steps.check_gradlew.outputs.exists == 'false'
-        run: sudo apt-get update && sudo apt-get install -y gradle
-      - name: Build (attempt)
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Install Gradle if no wrapper
+        if: steps.detect.outputs.wrapper == ''
         run: |
-          if [ -f "gradlew" ]; then
-            ./gradlew assembleDebug || true
-          elif [ -f "android-sample/gradlew" ]; then
-            (cd android-sample && ./gradlew assembleDebug) || true
+          sudo apt-get update
+          sudo apt-get install -y gradle
+
+      - name: Build Debug APK
+        run: |
+          if [ -n "${{ steps.detect.outputs.wrapper }}" ]; then
+            (cd "${{ steps.detect.outputs.wd }}" && ./gradlew assembleDebug)
           else
-            echo "No gradlew found; attempting system gradle build in android-sample"
-            gradle -p android-sample assembleDebug || true
+            gradle -p "${{ steps.detect.outputs.wd }}" assembleDebug
           fi
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk

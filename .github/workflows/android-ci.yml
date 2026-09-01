@@ -20,6 +20,11 @@ jobs:
       - name: Grant execute permission for gradlew (if exists)
         if: steps.check_gradlew.outputs.exists == 'true'
         run: chmod +x gradlew
+      - name: Grant execute permission for android-sample/gradlew (if exists)
+        run: |
+          if [ -f "android-sample/gradlew" ]; then
+            chmod +x android-sample/gradlew
+          fi
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
